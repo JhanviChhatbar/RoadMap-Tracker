@@ -2,7 +2,7 @@
 
 import { Task } from "@/types";
 import { useState } from "react";
-import { CheckCircle2, Circle, Trash2, Edit2 } from "lucide-react";
+import { CheckCircle2, Circle, Trash2, Edit2, ArrowRight } from "lucide-react";
 
 interface TaskCardProps {
   task: Task;
@@ -78,6 +78,13 @@ export default function TaskCard({ task, onUpdate, onDelete }: TaskCardProps) {
             >
               {task.title}
             </h3>
+
+            {task.isCarriedOver && task.carriedOverFrom && (
+              <div className="flex items-center space-x-1 mt-1 text-orange-600 text-xs">
+                <ArrowRight size={12} />
+                <span>Carried over from {task.carriedOverFrom}</span>
+              </div>
+            )}
 
             {task.description && (
               <p className="text-gray-600 text-sm mt-1">{task.description}</p>

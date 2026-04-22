@@ -1,6 +1,7 @@
 import { getDatabase, saveDatabase } from "./index";
 import { Task, Section, CarryOverLog } from "@/types";
 import { randomUUID } from "crypto";
+import { addDaysToDate } from "@/lib/date-utils";
 
 // Initialize schema on first import
 let initialized = false;
@@ -31,6 +32,10 @@ export function getAllTasks(date?: string): Task[] {
 export function getTasksByDate(date: string): Task[] {
   ensureInitialized();
   const db = getDatabase();
+  
+  // Auto carry-over incomplete tasks from previous day
+  autoCarryOverIncompletesTasks(date);
+  
   return db.tasks
     .filter(t => t.dueDate === date)
     .sort((a, b) => {
@@ -171,6 +176,75 @@ export function createCarryOverLog(
   db.carryOverLogs.push(log);
   saveDatabase();
   return log;
+}
+
+export function getIncompleteTasksForDate(date: string): Task[] {
+  ensureInitialized();
+  const db = getDatabase();
+  return db.tasks.filter(
+    t => t.dueDate === date && 
+    t.status !== "Completed" && 
+    !t.isCarriedOver
+  );
+}
+
+export function autoCarryOverIncompletesTasks(currentDate: string): Task[] {
+  ensureInitialized();
+  const db = getDatabase();
+  
+  // Get previous day's date
+  const previousDate = addDaysToDate(currentDate, -1);
+  
+  // Find incomplete tasks from previous day that haven't already been carried over
+  const incompleteTasks = db.tasks.filter(t => {
+    // Must be from previous day, incomplete, and not already a carried-over task
+    if (t.dueDate !== previousDate || t.status === "Completed" || t.isCarriedOver) {
+      return false;
+    }
+    
+    // Check if this task has already been carried over to the current date
+    const alreadyCarriedOver = db.tasks.some(carried =>
+      carried.dueDate === currentDate &&
+      carried.isCarriedOver &&
+      carried.carriedOverFrom === previousDate &&
+      carried.title === t.title &&
+      carried.section === t.section
+    );
+    
+    return !alreadyCarriedOver;
+  });
+  
+  // Create carry-over copies for current date
+  const carriedOverTasks: Task[] = [];
+  const now = new Date().toISOString();
+  
+  for (const task of incompleteTasks) {
+    const newTaskId = randomUUID();
+    const carriedTask: Task = {
+      ...task,
+      id: newTaskId,
+      dueDate: currentDate,
+      status: "Not Started",
+      completedAt: null,
+      completionLog: null,
+      isCarriedOver: true,
+      carriedOverFrom: previousDate,
+      createdAt: now,
+      updatedAt: now,
+    };
+    
+    db.tasks.push(carriedTask);
+    carriedOverTasks.push(carriedTask);
+    
+    // Create carry-over log
+    createCarryOverLog(task.id, previousDate, currentDate, "Auto carry-over from incomplete tasks");
+  }
+  
+  if (carriedOverTasks.length > 0) {
+    saveDatabase();
+  }
+  
+  return carriedOverTasks;
 }
 
 
